@@ -146,13 +146,22 @@ REST_FRAMEWORK = {
 # ---------------------------------------------------------------------------
 # Celery (Phase 5+)
 # ---------------------------------------------------------------------------
+# Default broker: memory:// works without Redis — set CELERY_BROKER_URL=redis://...
+# in .env when Redis is available.
 
-CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL", "redis://localhost:6379/0")
-CELERY_RESULT_BACKEND = os.environ.get("CELERY_RESULT_BACKEND", "redis://localhost:6379/0")
+_default_broker = os.environ.get("CELERY_BROKER_URL", "memory://")
+_default_backend = os.environ.get("CELERY_RESULT_BACKEND", "cache+memory://")
+
+CELERY_BROKER_URL = _default_broker
+CELERY_RESULT_BACKEND = _default_backend
 CELERY_ACCEPT_CONTENT = ["json"]
 CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = "UTC"
+# Silence Celery 6.0 deprecation warning about broker_connection_retry
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+
+
 
 # Celery Beat — periodic task schedule
 # Requires: celery -A wsia beat --loglevel=info

@@ -9,6 +9,7 @@ python-dotenv==1.0.1
 celery==5.3.6
 redis==5.0.3
 gunicorn>=22.0.0
+whitenoise>=6.6.0
 
 # Phase 7 AI Integration
 openai>=1.0.0

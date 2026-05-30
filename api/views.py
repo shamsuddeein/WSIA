@@ -17,7 +17,6 @@ from rest_framework import generics, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.views import APIView
-import numpy as np
 
 from reports.models import Category, HackReport
 
@@ -113,23 +112,19 @@ class HackReportViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=True, methods=['get'])
     def similar(self, request, pk=None):
+        from pgvector.django import CosineDistance
+        
         report = self.get_object()
         if not report.embedding:
             return Response({"error": "No embedding generated for this report yet."}, status=404)
             
-        target_vec = np.array(report.embedding)
         qs = HackReport.objects.filter(
             is_processed=True
         ).exclude(pk=report.pk).exclude(embedding__isnull=True).select_related("category").prefetch_related("tags")
         
-        results = []
-        for other in qs:
-            other_vec = np.array(other.embedding)
-            sim = np.dot(target_vec, other_vec) / (np.linalg.norm(target_vec) * np.linalg.norm(other_vec))
-            results.append((sim, other))
-            
-        results.sort(key=lambda x: x[0], reverse=True)
-        top_5 = [r[1] for r in results[:5]]
+        top_5 = qs.annotate(
+            distance=CosineDistance('embedding', report.embedding)
+        ).order_by('distance')[:5]
         
         serializer = HackReportListSerializer(top_5, many=True)
         return Response(serializer.data)

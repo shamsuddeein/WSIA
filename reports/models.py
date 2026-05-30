@@ -2,6 +2,7 @@ import logging
 
 from django.db import models
 from django.utils.text import slugify
+from pgvector.django import VectorField
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +90,7 @@ class HackReport(models.Model):
 
     # AI layer — added in Phase 7 migration
     ai_summary = models.TextField(null=True, blank=True)
-    embedding = models.JSONField(null=True, blank=True)
+    embedding = VectorField(dimensions=1536, null=True, blank=True)
 
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)

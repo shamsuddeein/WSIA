@@ -1,0 +1,1451 @@
+WSIA
+
+Web Security Intelligence Architecture
+
+Build Plan & Execution Guide
+
+
+
+Overview
+
+This is the build order for WSIA — a security intelligence pipeline that scrapes, cleans, stores, and serves vulnerability data. The goal is a system where data integrity comes first and features follow after the foundation is stable.
+
+The document covers 8 phases. Each phase has a clear finish condition, a troubleshooting table, and notes on what can go wrong. Don't start the next phase until the current one passes its checks.
+
+
+
+System Flow
+
+The full pipeline, once complete:
+
+
+
+1
+
+Scraper  —  one source to start, rekt.news
+
+2
+
+Analytics  —  clean and tag the raw data
+
+3
+
+Reports DB  —  structured, deduplicated storage
+
+4
+
+API  —  serve data via REST endpoints
+
+5
+
+Search  —  filter by category, severity, keyword
+
+6
+
+AI assistant  —  optional layer, added last
+
+
+
+Build in this order. The AI layer is last because it depends on everything before it working correctly. If the data is messy, AI summaries will be wrong. There's no shortcut around that.
+
+
+
+
+
+Data Schema
+
+Three models live in the reports app. Understanding how they relate before writing any code saves time later.
+
+
+
+Relationships
+
+HackReport is the central model. A report belongs to one Category and can have multiple Tags. Category and Tag are simple lookup tables — don't over-engineer them early.
+
+
+
+Category  (1) ──< HackReport (many)
+
+Tag       (many) >──< HackReport (many)   [ManyToMany]
+
+
+
+Category
+
+Field
+
+Type
+
+Notes
+
+id
+
+AutoField
+
+Primary key, auto-generated
+
+name
+
+CharField(100)
+
+e.g. Reentrancy, Oracle, Flash Loan
+
+slug
+
+SlugField
+
+URL-safe version of name — auto-generate from name
+
+created_at
+
+DateTimeField
+
+auto_now_add=True
+
+
+
+Tag
+
+Field
+
+Type
+
+Notes
+
+id
+
+AutoField
+
+Primary key
+
+name
+
+CharField(50)
+
+Short label, e.g. 'defi', 'bridge', 'high-severity'
+
+created_at
+
+DateTimeField
+
+auto_now_add=True
+
+
+
+HackReport
+
+Field
+
+Type
+
+Notes
+
+id
+
+AutoField
+
+Primary key
+
+title
+
+CharField(300)
+
+Report headline — keep it short
+
+description
+
+TextField
+
+Raw or cleaned body text
+
+source_url
+
+URLField
+
+Original article/post URL
+
+source
+
+CharField(50)
+
+Source name — e.g. rekt.news, Immunefi, Code4rena
+
+severity
+
+CharField(20)
+
+Choices: low / medium / high / critical
+
+category
+
+ForeignKey(Category)
+
+on_delete=SET_NULL, null=True
+
+tags
+
+ManyToManyField(Tag)
+
+blank=True — optional
+
+is_processed
+
+BooleanField
+
+False until Analytics cleans it
+
+created_at
+
+DateTimeField
+
+auto_now_add=True — when scraped
+
+published_at
+
+DateTimeField
+
+null=True — original publication date
+
+hash
+
+CharField(64)
+
+SHA-256 of source_url — unique=True, db_index=True
+
+raw_data
+
+JSONField
+
+default=dict, blank=True — source-specific metadata
+
+
+
+⚠  Note:  The hash field is the deduplication key. Before inserting any record, check if a report with that hash already exists. Set unique=True and db_index=True at the database level — don't rely on application-layer checks alone. A race condition during automated scraping can still insert duplicates without the database constraint.
+
+
+
+Why source and raw_data matter
+
+source lets you filter by provider immediately — once Phase 5 adds a second scraper, you'll want to query 'all rekt.news reports' without touching the URL. Add it now, not later.
+
+raw_data is a JSONField that holds whatever the source gave you that didn't map cleanly to your schema. Different scrapers return different shapes. Without this field, you'd either lose that data or change your schema every time you add a source. Store it raw, ignore it until you need it.
+
+
+
+Database indexes
+
+Add these to HackReport.Meta before the first migration. Indexes are cheap to add early and expensive to add later on a table with millions of rows.
+
+class HackReport(models.Model):
+
+    # ... fields ...
+
+
+
+    class Meta:
+
+        indexes = [
+
+            models.Index(fields=['title']),
+
+            models.Index(fields=['severity']),
+
+            models.Index(fields=['created_at']),
+
+            models.Index(fields=['published_at']),
+
+            models.Index(fields=['source']),
+
+            # hash is already indexed via unique=True
+
+        ]
+
+
+
+
+
+Dependencies
+
+Lock your versions before writing any code. Version drift between team members or deployment environments is a common source of confusing bugs that have nothing to do with your logic.
+
+
+
+Runtime requirements
+
+Python  —  3.11 or 3.12. Avoid 3.13 for now — some packages lag on new releases.
+
+pip  —  23+ (ships with Python 3.11)
+
+PostgreSQL  —  14+ recommended. SQLite works for local dev but don't use it in production.
+
+
+
+Python packages (requirements.txt)
+
+Package
+
+Version
+
+Purpose
+
+django
+
+4.2 LTS
+
+Core framework — use LTS for stability
+
+djangorestframework
+
+3.15
+
+REST API layer
+
+django-filter
+
+23.5
+
+Query param filtering for API endpoints
+
+psycopg2-binary
+
+2.9
+
+PostgreSQL adapter
+
+requests
+
+2.31
+
+HTTP client for scraper
+
+beautifulsoup4
+
+4.12
+
+HTML parsing for scraper
+
+lxml
+
+4.9
+
+Faster BS4 parser backend
+
+python-dotenv
+
+1.0
+
+Load .env secrets into os.environ
+
+celery
+
+5.3
+
+Task queue for Phase 5 automation
+
+redis
+
+5.0
+
+Celery broker backend
+
+openai
+
+1.x
+
+AI integration (Phase 7 only)
+
+
+
+⚠  Note:  Install openai only when you reach Phase 7. Adding it earlier tempts you to use it earlier.
+
+
+
+Environment variables (.env)
+
+SECRET_KEY=your-django-secret-key
+
+DEBUG=True
+
+DATABASE_URL=postgres://user:password@localhost:5432/wsia
+
+OPENAI_API_KEY=sk-...    # Phase 7 only
+
+
+
+✗  Avoid:  Never commit .env to Git. Add it to .gitignore on day one before your first commit.
+
+
+
+
+
+Rules
+
+These apply to every phase. When a decision feels uncertain, come back here.
+
+
+
+Do not:
+
+✗  Build the AI layer before the data pipeline exists.
+
+✗  Scrape multiple sites during early phases.
+
+✗  Mix scraper logic with API code — they are separate concerns.
+
+✗  Optimize or refactor before Phase 5.
+
+✗  Commit secrets or .env files to Git.
+
+
+
+Do:
+
+✓  Build the database first, always.
+
+✓  Test each phase independently before moving on.
+
+✓  Back up the database before running new migrations.
+
+✓  Keep the system runnable without the AI layer.
+
+✓  Check for existing records by hash before inserting.
+
+
+
+
+
+Phase 0  Project Foundation
+
+
+
+Get a working Django project before touching anything else. This phase is plumbing, not features.
+
+
+
+Tasks
+
+Create virtual environment and install dependencies
+
+Create Django project: django-admin startproject wsia .
+
+Install DRF and add to INSTALLED_APPS
+
+Create base apps: core and reports
+
+Configure PostgreSQL connection in settings.py via DATABASE_URL
+
+Initialize Git repo with .gitignore (include .env, __pycache__, *.pyc)
+
+Make first commit: 'Initial Django project setup'
+
+
+
+Setup commands
+
+python -m venv venv
+
+source venv/bin/activate   # Windows: venv\Scripts\activate
+
+pip install django==4.2 djangorestframework==3.15 python-dotenv
+
+django-admin startproject wsia .
+
+python manage.py startapp core
+
+python manage.py startapp reports
+
+python manage.py migrate
+
+python manage.py runserver
+
+
+
+Done when:
+
+✓  python manage.py runserver runs without errors
+
+✓  http://localhost:8000 returns the Django welcome page
+
+✓  Git initialized with at least one commit
+
+
+
+Troubleshooting
+
+Symptom
+
+Likely cause / fix
+
+runserver fails on port 8000
+
+Port in use — run: python manage.py runserver 8080
+
+ModuleNotFoundError: django
+
+Virtual environment not activated — run: source venv/bin/activate
+
+DATABASES error on startup
+
+DATABASE_URL not set — check .env is loaded and psycopg2-binary is installed
+
+'wsia' already exists error
+
+You ran startproject inside an existing folder — run from a clean directory
+
+
+
+
+
+Phase 1  Database Core
+
+
+
+The database is the brain of this system. If the models are wrong here, everything built on top of them will be wrong too. Take the time.
+
+
+
+Tasks
+
+Define Category, Tag, and HackReport models in reports/models.py
+
+Add severity choices as a class constant, not a plain string
+
+Add source and raw_data fields to HackReport
+
+Add hash field with unique=True and db_index=True
+
+Add Meta indexes block to HackReport
+
+Create reports/services/ directory with report_service.py, dedup_service.py, category_service.py
+
+Register all three models in reports/admin.py
+
+Run makemigrations and migrate
+
+Insert 2-3 test records via Django admin to verify
+
+
+
+Project structure after Phase 1
+
+wsia/
+
+├── core/
+
+│   ├── models.py
+
+│   └── ...
+
+├── reports/
+
+│   ├── models.py          ← Category, Tag, HackReport
+
+│   ├── admin.py
+
+│   ├── migrations/
+
+│   └── services/
+
+│       ├── __init__.py
+
+│       ├── report_service.py    ← create/update report logic
+
+│       ├── dedup_service.py     ← hash checking
+
+│       └── category_service.py  ← keyword assignment
+
+└── manage.py
+
+
+
+Why a services/ layer
+
+Keep models thin. Models should define data structure and relationships — nothing else. Business logic (is this a duplicate? which category fits this text?) lives in services/. This makes each piece testable in isolation and keeps models from growing into unmaintainable blobs over time.
+
+# reports/services/dedup_service.py
+
+import hashlib
+
+from reports.models import HackReport
+
+
+
+def compute_hash(url: str) -> str:
+
+    return hashlib.sha256(url.encode()).hexdigest()
+
+
+
+def is_duplicate(url: str) -> bool:
+
+    return HackReport.objects.filter(hash=compute_hash(url)).exists()
+
+
+
+Before running migrations
+
+⚠  Note:  Back up your database before every migration run, even in development. Get into the habit now:
+pg_dump wsia > backup_$(date +%Y%m%d).sql
+
+
+
+Severity choices pattern
+
+class HackReport(models.Model):
+
+    class Severity(models.TextChoices):
+
+        LOW      = 'low',      'Low'
+
+        MEDIUM   = 'medium',   'Medium'
+
+        HIGH     = 'high',     'High'
+
+        CRITICAL = 'critical', 'Critical'
+
+
+
+    severity = models.CharField(
+
+        max_length=20,
+
+        choices=Severity.choices,
+
+        default=Severity.MEDIUM
+
+    )
+
+
+
+Done when:
+
+✓  python manage.py migrate runs with no errors
+
+✓  Django admin at /admin/ shows all three models
+
+✓  You can create a HackReport via admin and it saves correctly
+
+✓  reports/services/ directory exists with all three service files
+
+✓  Inserting the same source_url twice raises a database IntegrityError (proving unique=True works)
+
+
+
+Troubleshooting
+
+Symptom
+
+Likely cause / fix
+
+Admin panel shows no models
+
+Not registered in admin.py — add admin.site.register(HackReport)
+
+Migration error: column already exists
+
+Stale migration files — delete migrations/ (except __init__.py) and re-run makemigrations
+
+ForeignKey constraint error on save
+
+Category record doesn't exist yet — create a Category first, then create the HackReport
+
+makemigrations shows 'No changes detected'
+
+App not in INSTALLED_APPS — add 'reports' to settings.py
+
+IntegrityError not raised on duplicate hash
+
+unique=True missing from hash field definition — check models.py and re-run makemigrations
+
+JSONField error on migrate
+
+Django version below 3.1 — JSONField requires Django 3.1+. Confirm you're on 4.2.
+
+
+
+
+
+Phase 2  Basic API
+
+
+
+Expose the database before you build any automation. This forces you to confirm the data model works as an API — not just as a schema on paper.
+
+
+
+Tasks
+
+Create api app: python manage.py startapp api
+
+Write HackReportSerializer in api/serializers.py
+
+Write HackReportViewSet in api/views.py
+
+Configure router and URLs in api/urls.py and wsia/urls.py
+
+Add django-filter backend to DRF settings
+
+Add ?category= filter to the list endpoint
+
+Enable pagination (e.g. 20 results per page)
+
+
+
+DRF settings block
+
+REST_FRAMEWORK = {
+
+    'DEFAULT_FILTER_BACKENDS': ['django_filters.rest_framework.DjangoFilterBackend'],
+
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
+
+    'PAGE_SIZE': 20
+
+}
+
+
+
+Endpoints
+
+Field
+
+Type
+
+Notes
+
+GET /api/reports/
+
+List
+
+Paginated list of all reports
+
+GET /api/reports/{id}/
+
+Detail
+
+Single report by ID
+
+GET /api/reports/?category=defi
+
+Filter
+
+Reports filtered by category slug
+
+GET /api/reports/?severity=high
+
+Filter
+
+Reports filtered by severity
+
+
+
+Done when:
+
+✓  GET /api/reports/ returns a paginated JSON response
+
+✓  GET /api/reports/1/ returns a single report
+
+✓  ?category= filter returns the correct subset
+
+✓  System works end-to-end without a scraper
+
+
+
+Troubleshooting
+
+Symptom
+
+Likely cause / fix
+
+404 on /api/reports/
+
+URL not wired up — check wsia/urls.py includes api.urls
+
+Empty results on filter
+
+Filter field not declared in filterset_fields — add 'category__slug' to ViewSet
+
+Pagination not working
+
+PAGE_SIZE not set in REST_FRAMEWORK settings
+
+500 on detail endpoint
+
+Serializer missing a required field — check all ForeignKey fields have depth=1 or are explicitly serialized
+
+
+
+
+
+Phase 3  First Scraper
+
+
+
+Prove the scraping pipeline works before scaling it. One source, done correctly, is enough for now.
+
+
+
+Source: rekt.news
+
+Use requests + BeautifulSoup with the lxml parser
+
+Extract: title, description, source_url, and published date if available
+
+Set source='rekt.news' on every record created by this scraper
+
+Store any extra scraped fields in raw_data JSONField — don't discard them
+
+Compute SHA-256 hash of source_url before inserting
+
+Use dedup_service.is_duplicate() — never inline the hash check
+
+Store raw data directly into HackReport with is_processed=False
+
+
+
+Scraper skeleton
+
+import requests
+
+from bs4 import BeautifulSoup
+
+from reports.models import HackReport
+
+from reports.services.dedup_service import compute_hash, is_duplicate
+
+
+
+SOURCE_NAME = 'rekt.news'
+
+
+
+def scrape_rekt():
+
+    resp = requests.get('https://rekt.news', timeout=10)
+
+    resp.raise_for_status()
+
+    soup = BeautifulSoup(resp.text, 'lxml')
+
+    # ... parse articles ...
+
+    if not is_duplicate(article_url):
+
+        HackReport.objects.create(
+
+            title=title,
+
+            source_url=article_url,
+
+            source=SOURCE_NAME,
+
+            hash=compute_hash(article_url),
+
+            is_processed=False,
+
+            raw_data={'scraped_at': str(datetime.now()), 'extra': extra_fields}
+
+        )
+
+
+
+Rate limiting and timeouts
+
+⚠  Note:  Always set a timeout on requests.get(). Without one, a hung connection will freeze your scraper indefinitely.
+
+Add a delay between requests: time.sleep(2). Hitting a site without delays can get your IP blocked.
+
+If you get a 429 (Too Many Requests), back off and retry after 60 seconds minimum.
+
+If you get a 403, the site may be blocking scrapers. Check their robots.txt before going further.
+
+
+
+What not to store
+
+✗  Avoid:  Full article HTML — store only the fields you defined in the model.
+
+Author names or personal details from the articles.
+
+Copyrighted article body text in full — a short description or excerpt is fine.
+
+Raw cookies, session tokens, or any auth data from the response headers.
+
+
+
+Hard limits for this phase
+
+✗  No second website.
+
+✗  No AI integration.
+
+✗  No data cleaning yet — raw data is fine.
+
+
+
+Done when:
+
+✓  Scraper runs without errors and extracts records from rekt.news
+
+✓  Records appear in the database with is_processed=False
+
+✓  Running the scraper twice does not create duplicate records
+
+
+
+Troubleshooting
+
+Symptom
+
+Likely cause / fix
+
+requests.exceptions.Timeout
+
+Site slow or blocking — increase timeout to 20s, add retry logic
+
+BeautifulSoup finds no articles
+
+Site HTML structure changed — inspect the page manually and update your selectors
+
+Duplicate records appearing
+
+Hash check not implemented correctly — verify the hash field is populated before the exists() check
+
+403 Forbidden
+
+Add a User-Agent header: headers={'User-Agent': 'Mozilla/5.0 ...'}
+
+SSL certificate error
+
+Outdated certifi — run: pip install --upgrade certifi
+
+
+
+
+
+Phase 4  Data Cleaning & Normalization
+
+
+
+Turn raw scraped text into structured data the API can serve usefully. Rule-based logic only — no ML, no AI.
+
+
+
+Build the analytics app
+
+Create analytics app: python manage.py startapp analytics
+
+clean_text(text)  —  strip HTML tags, collapse whitespace, remove non-UTF-8 characters
+
+normalize_report(report)  —  apply clean_text to title and description, set is_processed=True
+
+assign_category(report)  —  keyword matching: 'reentrancy' → Reentrancy, 'oracle' → Oracle, etc.
+
+assign_severity(report)  —  rule-based: dollar amounts > $10M → high, mentions of 'drained' → critical
+
+
+
+Keyword rules (starting set)
+
+CATEGORY_RULES = {
+
+    'reentrancy':  'Reentrancy',
+
+    'oracle':      'Oracle Manipulation',
+
+    'flash loan':  'Flash Loan',
+
+    'bridge':      'Bridge Exploit',
+
+    'private key': 'Key Compromise',
+
+}
+
+
+
+def assign_category(text):
+
+    text_lower = text.lower()
+
+    for keyword, category_name in CATEGORY_RULES.items():
+
+        if keyword in text_lower:
+
+            cat, _ = Category.objects.get_or_create(name=category_name)
+
+            return cat
+
+    return None
+
+
+
+Before running this phase
+
+⚠  Note:  Back up the database before running any bulk update script:
+pg_dump wsia > backup_before_phase4.sql
+
+If cleaning logic has a bug, you can restore raw data without re-scraping.
+
+
+
+Done when:
+
+✓  All HackReport records with is_processed=False have been cleaned
+
+✓  No duplicate records in the database
+
+✓  Records have categories assigned where keyword rules matched
+
+✓  is_processed=True on all processed records
+
+
+
+Troubleshooting
+
+Symptom
+
+Likely cause / fix
+
+Category not assigned even when keyword is in text
+
+Check case sensitivity — use text.lower() before matching
+
+clean_text corrupts non-ASCII characters
+
+Use text.encode('utf-8', errors='replace').decode() before processing
+
+Bulk update runs but no records change
+
+Query filters on is_processed=False — verify records actually have that value
+
+get_or_create creates duplicate categories
+
+Slug field not unique — add unique=True to Category.slug and re-migrate
+
+
+
+
+
+Phase 5  Full Pipeline Automation
+
+
+
+Wire everything together so data flows from scraper to API without manual steps.
+
+
+
+Tasks
+
+Set up Celery with Redis as the broker
+
+Create a periodic task: scrape → clean → store cycle
+
+Add duplicate detection as a pre-insert check (hash lookup)
+
+Add basic logging so you can see what ran and when
+
+Test the full pipeline end-to-end at least three times
+
+
+
+Pipeline flow
+
+@shared_task
+
+def run_pipeline():
+
+    reports = scrape_rekt()          # Phase 3
+
+    for report in reports:
+
+        if not is_duplicate(report):  # hash check
+
+            raw = store_raw(report)   # save is_processed=False
+
+            normalize_report(raw)     # Phase 4
+
+            assign_category(raw)      # Phase 4
+
+
+
+Rollback plan
+
+⚠  Note:  If the pipeline corrupts data, restore from backup and delete all records where is_processed=False before re-running.
+
+Keep a created_at timestamp on every record — it's your audit trail for when records entered the system.
+
+
+
+Done when:
+
+✓  Pipeline runs automatically via Celery beat on a schedule
+
+✓  Running the pipeline three times in a row produces no duplicates
+
+✓  Logs show each run's record count and any skipped duplicates
+
+
+
+Troubleshooting
+
+Symptom
+
+Likely cause / fix
+
+Celery worker not picking up tasks
+
+Redis not running — start with: redis-server
+
+Tasks run but nothing is stored
+
+Database connection inside Celery task — check Django settings are loaded in celery.py
+
+Duplicate records despite hash check
+
+Race condition — add a unique constraint on the hash field at the database level
+
+Pipeline hangs indefinitely
+
+Scraper has no timeout — add timeout=10 to requests.get() call
+
+
+
+
+
+Phase 6  Search & Filtering
+
+
+
+Make the system useful as a research tool. A well-designed search endpoint is more valuable than any AI feature at this point.
+
+
+
+Tasks
+
+Add keyword search on title and description fields
+
+Add filters: category, severity, date range
+
+Add ordering: by date, by severity
+
+Add a /search/ endpoint separate from /reports/ to keep concerns clean
+
+Test with at least 50 records in the database to confirm performance
+
+
+
+Search endpoint
+
+# api/views.py
+
+from django.db.models import Q
+
+
+
+class ReportSearchView(generics.ListAPIView):
+
+    serializer_class = HackReportSerializer
+
+
+
+    def get_queryset(self):
+
+        q = self.request.query_params.get('q', '')
+
+        return HackReport.objects.filter(
+
+            Q(title__icontains=q) | Q(description__icontains=q),
+
+            is_processed=True
+
+        ).order_by('-created_at')
+
+
+
+Done when:
+
+✓  GET /api/search/?q=reentrancy returns relevant results
+
+✓  Filters by category, severity, and date work independently and combined
+
+✓  Response time under 500ms with 100+ records in the database
+
+
+
+Troubleshooting
+
+Symptom
+
+Likely cause / fix
+
+Search returns no results
+
+Check is_processed=True filter — unprocessed records are excluded
+
+icontains is too slow on large datasets
+
+Add a database index on title and description, or switch to PostgreSQL full-text search
+
+Ordering by severity not working correctly
+
+Severity is a string — use a custom ordering with Case/When or add a numeric priority field
+
+Filter combination returns wrong results
+
+Check that Q() conditions use the correct boolean logic — AND vs OR
+
+
+
+
+
+Phase 7  AI Integration
+
+
+
+Add an intelligence layer on top of a system that already works. If the AI layer breaks, the rest of the system keeps running.
+
+
+
+Model choice
+
+Use the OpenAI API with gpt-4o-mini for cost efficiency. Don't use a local model in early implementation — network latency is predictable, local inference hardware is not.
+
+
+
+Package
+
+Version
+
+Purpose
+
+gpt-4o-mini
+
+Summarization
+
+Fast, cheap, good enough for report summaries
+
+text-embedding-3-small
+
+Similarity
+
+1536-dimension embeddings for matching similar reports
+
+gpt-4o
+
+Pattern analysis
+
+Use only for 'suggest exploit pattern' — more expensive, use sparingly
+
+
+
+What to build
+
+Summarization  —  For each processed report, generate a 2-3 sentence plain-English summary. Store it as HackReport.ai_summary (add migration).
+
+Similarity matching  —  Generate embeddings for each report and store them. Compare via cosine similarity to find related incidents.
+
+Pattern tagging  —  Ask the model to suggest exploit pattern tags based on description. Human-review before applying to the record.
+
+
+
+Failure handling
+
+⚠  Note:  Wrap every OpenAI API call in try/except. A network timeout or rate limit error must not crash the pipeline.
+
+If summarization fails for a report, log the error and move on. Set ai_summary=None and retry in the next run.
+
+Add OPENAI_API_KEY presence check at startup — fail loudly if the key is missing, before any API calls are made.
+
+Set a per-run budget cap. If you process 500 reports at once, the cost adds up. Batch in chunks of 20-50.
+
+
+
+Summarization pattern
+
+def summarize_report(report):
+
+    try:
+
+        response = openai.chat.completions.create(
+
+            model='gpt-4o-mini',
+
+            messages=[{
+
+                'role': 'system',
+
+                'content': 'Summarize this security incident in 2-3 sentences.'
+
+            }, {
+
+                'role': 'user',
+
+                'content': report.description[:2000]  # cap input length
+
+            }],
+
+            max_tokens=150
+
+        )
+
+        report.ai_summary = response.choices[0].message.content
+
+        report.save(update_fields=['ai_summary'])
+
+    except Exception as e:
+
+        logger.error(f'Summarization failed for {report.id}: {e}')
+
+
+
+Important: system must run without AI
+
+✗  Avoid:  Never make the AI layer a required dependency. The /api/reports/ endpoint must return data whether or not OpenAI is reachable. ai_summary should be null-safe everywhere it's used.
+
+
+
+Done when:
+
+✓  Summaries generated and stored for all processed reports
+
+✓  Similarity endpoint returns relevant results for a test query
+
+✓  If OPENAI_API_KEY is removed, the rest of the API continues to function normally
+
+✓  AI errors are logged but do not interrupt the pipeline
+
+
+
+Troubleshooting
+
+Symptom
+
+Likely cause / fix
+
+openai.RateLimitError
+
+Too many requests — add exponential backoff: wait 2^n seconds between retries
+
+Summaries are too long or cut off
+
+Lower max_tokens and truncate input description before sending
+
+Embeddings taking too long
+
+Process in async Celery tasks, not synchronously in the API request cycle
+
+ai_summary field missing from response
+
+Serializer not updated — add 'ai_summary' to HackReportSerializer fields
+
+Similarity results are irrelevant
+
+Embeddings generated from raw text — run embedding on cleaned descriptions only
+
+
+
+
+
+Architecture Review
+
+
+
+8.5 / 10
+
+MVP Architecture Rating
+
+
+
+The remaining 1.5 points are around maintainability and future scaling — not correctness. The core architecture is sound.
+
+
+
+What works well
+
+Phased build order  —  Exactly right. Database before API, API before scraper, scraper before automation.
+
+One source first  —  Many projects fail here. Scraping five sites before proving one works reliably is a recurring mistake. This plan avoids it.
+
+AI as optional layer  —  Placing AI at Phase 7 with an explicit requirement that the system runs without it is the correct call.
+
+Hash-based deduplication  —  Cleaner than checking title or URL string similarity. The unique constraint at the database level makes it bulletproof.
+
+services/ separation  —  Keeps models thin and business logic testable in isolation.
+
+
+
+What was improved in this revision
+
+source field  —  Added to HackReport. Filtering by provider without parsing URLs is worth the one extra field.
+
+hash uniqueness  —  Elevated from application-level check to database-level constraint (unique=True, db_index=True).
+
+Indexes  —  Added to title, severity, created_at, published_at, and source before the first migration.
+
+raw_data JSONField  —  Stores source-specific metadata without schema changes per scraper.
+
+services/ layer  —  Extracted dedup, category, and report logic out of models and views.
+
+
+
+What to ignore until later
+
+✗  Celery and Redis — not until Phase 5.
+
+✗  Search optimization — not until you have 100+ real records.
+
+✗  Multiple scrapers — not until rekt.news is reliable.
+
+✗  AI anything — not until Phase 7.
+
+
+
+
+
+Immediate Next Action
+
+One task. Nothing else.
+
+
+
+→  Start here:  Complete Phase 0 and Phase 1 only.
+
+Build wsia/, core/, reports/ — with Category, Tag, and HackReport exactly as defined in this document.
+
+Stop when you can create a HackReport through Django Admin and read it back from the database.
+
+Do not touch Celery, Redis, Search, AI, or a second scraper.
+
+
+
+Once admin create and database read both work — open this document again and move to Phase 2.
+
+
+
+
+
+Go Deeper
+
+When you're ready for the next level of detail on any area:
+
+
+
+A
+
+Database Design  —  Production-level Django models with all fields, choices, and relationships defined.
+
+B
+
+Phase 0 & 1 Setup  —  Step-by-step commands for the Django project, virtual environment, and first models.
+
+C
+
+First Scraper (rekt.news)  —  A safe, structured scraper design for Phase 3 with rate limiting and error handling.
+
+
+
+
+
+Data integrity > features.  Structure > speed.  Pipeline correctness > AI hype.
+
+WSIA Build Plan  •  Page

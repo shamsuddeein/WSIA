@@ -154,6 +154,25 @@ CELERY_TASK_SERIALIZER = "json"
 CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = "UTC"
 
+# Celery Beat — periodic task schedule
+# Requires: celery -A wsia beat --loglevel=info
+from celery.schedules import crontab  # noqa: E402
+
+CELERY_BEAT_SCHEDULE = {
+    # Full scrape + normalise pipeline — every 6 hours
+    "run-pipeline-every-6h": {
+        "task": "analytics.tasks.run_pipeline",
+        "schedule": crontab(minute=0, hour="*/6"),
+        "options": {"expires": 3600},   # drop if still queued after 1h
+    },
+    # Normalise any records that failed the first pass — daily at 03:00 UTC
+    "normalize-unprocessed-daily": {
+        "task": "analytics.tasks.normalize_unprocessed",
+        "schedule": crontab(minute=0, hour=3),
+        "options": {"expires": 7200},
+    },
+}
+
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------

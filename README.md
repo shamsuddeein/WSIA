@@ -234,6 +234,32 @@ OPENAI_API_KEY=sk-...    # Phase 7 only — add when needed
 
 Full API reference: [API_DOCUMENTATION.md](API_DOCUMENTATION.md)
 
+Developer docs (local)
+----------------------
+
+To view the interactive API docs locally:
+
+1. Activate your venv and install dependencies:
+
+```bash
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+2. Start the Django dev server (docs are exposed in DEBUG by default):
+
+```bash
+python manage.py runserver 8000
+```
+
+3. Open:
+
+- http://localhost:8000/api/docs/  (Swagger UI)
+- http://localhost:8000/api/redoc/  (ReDoc)
+- http://localhost:8000/api/schema/ (raw OpenAPI YAML)
+
+For production, the docs are hidden unless `ENABLE_PUBLIC_DOCS=true` is set in the environment. Consider serving docs behind VPN or admin auth.
+
 ---
 
 ## Build Phases

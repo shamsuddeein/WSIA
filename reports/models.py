@@ -89,6 +89,7 @@ class HackReport(models.Model):
 
     # AI layer — added in Phase 7 migration
     ai_summary = models.TextField(null=True, blank=True)
+    embedding = models.JSONField(null=True, blank=True)
 
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)

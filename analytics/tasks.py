@@ -75,6 +75,7 @@ def run_pipeline(self, max_pages: int = 5) -> dict:
     new_count = 0
     skipped_count = 0
     error_count = 0
+    processed_report_ids = []
 
     for article in articles:
         url = article.get("source_url", "")
@@ -88,6 +89,7 @@ def run_pipeline(self, max_pages: int = 5) -> dict:
             with transaction.atomic():
                 report = create_report(**article)
                 normalize_report(report)
+                processed_report_ids.append(report.id)
             new_count += 1
         except Exception:
             error_count += 1
@@ -115,6 +117,11 @@ def run_pipeline(self, max_pages: int = 5) -> dict:
         "status": final_status,
     }
     logger.info("PipelineRun id=%s finished — %s", run.pk, summary)
+    
+    # Trigger AI enrichment for newly processed reports
+    for rid in processed_report_ids:
+        enrich_report_with_ai.delay(rid)
+        
     return summary
 
 
@@ -213,3 +220,49 @@ def scrape_only(self, max_pages: int = 5) -> dict:
             logger.exception("scrape_only: failed to store %s", url)
 
     return {"new": new_count, "skipped": skipped_count, "errors": error_count}
+
+
+# ---------------------------------------------------------------------------
+# AI Enrichment task
+# ---------------------------------------------------------------------------
+
+@shared_task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=60,
+    time_limit=300,
+    name="analytics.tasks.enrich_report_with_ai",
+)
+def enrich_report_with_ai(self, report_id: int) -> dict:
+    """
+    Generate AI summary and embedding for a report asynchronously.
+    """
+    from reports.models import HackReport  # noqa: PLC0415
+    from analytics.ai_service import generate_summary, generate_embedding  # noqa: PLC0415
+    
+    try:
+        report = HackReport.objects.get(pk=report_id)
+    except HackReport.DoesNotExist:
+        logger.error("enrich_report_with_ai: report id=%s not found", report_id)
+        return {"error": "not found"}
+        
+    updated = False
+    
+    if not report.ai_summary:
+        summary = generate_summary(report.description or report.title)
+        if summary:
+            report.ai_summary = summary
+            updated = True
+            
+    if not report.embedding:
+        embedding = generate_embedding(report.description or report.title)
+        if embedding:
+            report.embedding = embedding
+            updated = True
+            
+    if updated:
+        report.save(update_fields=['ai_summary', 'embedding'])
+        logger.info("enrich_report_with_ai: success for report id=%s", report_id)
+        return {"status": "success", "report_id": report_id}
+        
+    return {"status": "no_change", "report_id": report_id}

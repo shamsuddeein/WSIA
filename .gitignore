@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Django
+*.pyc
+db.sqlite3
+*.log
+local_settings.py
+media/
+staticfiles/
+
+# Environment secrets — NEVER commit these
+.env
+
+# Backups
+*.sql
+backup_*.sql
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store

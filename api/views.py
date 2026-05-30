@@ -21,12 +21,14 @@ from rest_framework.views import APIView
 from reports.models import Category, HackReport
 
 from .filters import HackReportFilter
+from drf_spectacular.utils import extend_schema, extend_schema_view, OpenApiExample
 from .serializers import (
     CategorySerializer,
     HackReportListSerializer,
     HackReportSerializer,
     SearchResultSerializer,
     StatsSerializer,
+    HealthSerializer,
 )
 
 logger = logging.getLogger(__name__)
@@ -72,6 +74,82 @@ def _apply_ordering(qs, ordering_param: str, default="-created_at"):
 # /api/reports/  and  /api/reports/{id}/
 # ---------------------------------------------------------------------------
 
+@extend_schema_view(
+    list=extend_schema(
+        description="List of hack reports (paginated).",
+        examples=[
+            OpenApiExample(
+                'Example list',
+                value={
+                    'count': 1,
+                    'next': None,
+                    'previous': None,
+                    'results': [
+                        {
+                            'id': 42,
+                            'title': 'Example exploit',
+                            'source': 'onchain',
+                            'source_url': 'https://example.com/report/42',
+                            'severity': 'high',
+                            'severity_display': 'High',
+                            'category_name': 'DeFi',
+                            'category_slug': 'defi',
+                            'tag_names': ['reentrancy'],
+                            'is_processed': True,
+                            'published_at': '2026-05-01T00:00:00Z',
+                            'created_at': '2026-05-02T00:00:00Z',
+                        }
+                    ],
+                },
+            )
+        ],
+    ),
+    retrieve=extend_schema(
+        description="Full report detail.",
+        examples=[
+            OpenApiExample(
+                'Example detail',
+                value={
+                    'id': 42,
+                    'title': 'Example exploit',
+                    'description': 'Full description text...',
+                    'source': 'onchain',
+                    'source_url': 'https://example.com/report/42',
+                    'severity': 'high',
+                    'severity_display': 'High',
+                    'category': {'id': 1, 'name': 'DeFi', 'slug': 'defi'},
+                    'tags': [{'id': 1, 'name': 'reentrancy'}],
+                    'is_processed': True,
+                    'ai_summary': 'AI summary...',
+                    'published_at': '2026-05-01T00:00:00Z',
+                    'created_at': '2026-05-02T00:00:00Z',
+                },
+            )
+        ],
+    ),
+    similar=extend_schema(
+        description="Top-k similar reports based on vector embeddings.",
+        examples=[
+            OpenApiExample(
+                'Similar example',
+                value=[
+                    {
+                        'id': 43,
+                        'title': 'Related exploit',
+                        'severity': 'medium',
+                        'category_name': 'DeFi',
+                        'category_slug': 'defi',
+                        'tag_names': ['flashloan'],
+                        'is_processed': True,
+                        'published_at': '2026-04-01T00:00:00Z',
+                        'created_at': '2026-04-02T00:00:00Z',
+                        'score': 0.92,
+                    }
+                ],
+            )
+        ],
+    ),
+)
 class HackReportViewSet(viewsets.ReadOnlyModelViewSet):
     """
     List and retrieve HackReport records.
@@ -134,6 +212,38 @@ class HackReportViewSet(viewsets.ReadOnlyModelViewSet):
 # /api/search/
 # ---------------------------------------------------------------------------
 
+@extend_schema_view(
+    list=extend_schema(
+        description="Search reports by keyword with filters.",
+        examples=[
+            OpenApiExample(
+                'Search example',
+                value={
+                    'count': 1,
+                    'next': None,
+                    'previous': None,
+                    'results': [
+                        {
+                            'id': 42,
+                            'title': 'Example exploit',
+                            'source': 'onchain',
+                            'source_url': 'https://example.com/report/42',
+                            'severity': 'high',
+                            'severity_display': 'High',
+                            'category_name': 'DeFi',
+                            'category_slug': 'defi',
+                            'tag_names': ['reentrancy'],
+                            'is_processed': True,
+                            'published_at': '2026-05-01T00:00:00Z',
+                            'created_at': '2026-05-02T00:00:00Z',
+                            'excerpt': 'Short excerpt of description...'
+                        }
+                    ],
+                },
+            )
+        ],
+    )
+)
 class ReportSearchView(generics.ListAPIView):
     """
     Full-text keyword search across title and description of processed reports.
@@ -215,6 +325,8 @@ class StatsView(APIView):
         top_categories      — top 10 categories by report count
     """
 
+    serializer_class = StatsSerializer
+
     def get(self, request):
         qs = HackReport.objects.all()
 
@@ -280,6 +392,8 @@ class CategoryListView(generics.ListAPIView):
 
 class HealthCheckView(APIView):
     """Liveness probe — returns 200 if Django + DB are reachable."""
+
+    serializer_class = HealthSerializer
 
     def get(self, request):
         # Touch the DB to confirm connectivity

@@ -5,6 +5,7 @@ Added: SearchResultSerializer with match context, StatsSerializer.
 """
 
 from rest_framework import serializers
+from drf_spectacular.utils import extend_schema_field
 
 from reports.models import Category, HackReport, Tag
 
@@ -74,7 +75,7 @@ class HackReportListSerializer(serializers.ModelSerializer):
             "created_at",
         ]
 
-    def get_tag_names(self, obj):
+    def get_tag_names(self, obj) -> list[str]:
         return list(obj.tags.values_list("name", flat=True))
 
 
@@ -94,6 +95,11 @@ class SearchResultSerializer(HackReportListSerializer):
         if len(text) <= 300:
             return text
         return text[:297] + "…"
+    def get_excerpt(self, obj) -> str:
+        text = obj.description or ""
+        if len(text) <= 300:
+            return text
+        return text[:297] + "…"
 
 
 class CategoryStatsSerializer(serializers.Serializer):
@@ -102,6 +108,13 @@ class CategoryStatsSerializer(serializers.Serializer):
     name = serializers.CharField()
     slug = serializers.CharField()
     count = serializers.IntegerField()
+
+
+class HealthSerializer(serializers.Serializer):
+    """Serializer for the /api/health/ liveness probe."""
+
+    status = serializers.CharField()
+    db = serializers.CharField()
 
 
 class StatsSerializer(serializers.Serializer):

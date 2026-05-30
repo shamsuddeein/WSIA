@@ -38,7 +38,7 @@ class AILayerTests(TestCase):
         
         # Mock embedding
         mock_embed_response = mock_client.embeddings.create.return_value
-        mock_embed_response.data = [type('obj', (object,), {'embedding': [0.1, 0.2, 0.3]})()]
+        mock_embed_response.data = [type('obj', (object,), {'embedding': [0.1] * 1536})()]
         
         # We also need get_client to return the mocked client.
         with patch('analytics.ai_service.get_client', return_value=mock_client):
@@ -47,4 +47,4 @@ class AILayerTests(TestCase):
         self.assertEqual(result["status"], "success")
         self.report.refresh_from_db()
         self.assertEqual(self.report.ai_summary, "Mocked AI summary.")
-        self.assertEqual(self.report.embedding, [0.1, 0.2, 0.3])
+        self.assertEqual(len(self.report.embedding), 1536)

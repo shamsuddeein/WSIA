@@ -232,6 +232,8 @@ OPENAI_API_KEY=sk-...    # Phase 7 only — add when needed
 
 **Pagination:** 20 results per page (configurable via `PAGE_SIZE` in DRF settings).
 
+Full API reference: [API_DOCUMENTATION.md](API_DOCUMENTATION.md)
+
 ---
 
 ## Build Phases

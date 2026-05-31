@@ -49,6 +49,22 @@ CATEGORY_RULES: list[tuple[str, str]] = [
     ("sybil",              "Sybil Attack"),
 ]
 
+TAG_TO_CATEGORY = {
+    'private key leak': 'Key Compromise',
+    'bridge':           'Bridge Exploit',
+    'reentrancy':       'Reentrancy',
+    'flash loan':       'Flash Loan',
+    'oracle':           'Oracle Manipulation',
+    'rug':              'Rug Pull',
+    'phishing':         'Phishing',
+    'governance':       'Governance Attack',
+    'access control':   'Access Control',
+    'signature':        'Signature Verification',
+    'sybil':            'Sybil Attack',
+    'mev':              'MEV / Front-Running',
+    'supply chain':     'Supply Chain Attack',
+}
+
 # ---------------------------------------------------------------------------
 # Severity thresholds (dollar amounts in USD)
 # ---------------------------------------------------------------------------
@@ -87,6 +103,18 @@ def assign_category(text: str):
             cat, created = Category.objects.get_or_create(name=category_name)
             if created:
                 logger.info("Created new category: %s", category_name)
+            return cat
+    return None
+
+
+def assign_category_from_tags(report):
+    from reports.models import Category  # noqa: PLC0415
+    tag_names = [t.name.lower() for t in report.tags.all()]
+    for tag_keyword, category_name in TAG_TO_CATEGORY.items():
+        if any(tag_keyword in tag for tag in tag_names):
+            cat, created = Category.objects.get_or_create(name=category_name)
+            if created:
+                logger.info("Created new category from tag: %s", category_name)
             return cat
     return None
 

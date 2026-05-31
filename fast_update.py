@@ -6,7 +6,7 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'wsia.settings')
 django.setup()
 
 from reports.models import HackReport, Category
-from reports.services.category_service import assign_category_from_tags
+from reports.services.category_service import assign_category_from_tags, assign_category_from_title
 
 reports = HackReport.objects.filter(category__isnull=True).prefetch_related('tags')
 print(f"Checking {reports.count()} uncategorized reports...")
@@ -14,6 +14,9 @@ print(f"Checking {reports.count()} uncategorized reports...")
 updated_count = 0
 for report in reports:
     cat = assign_category_from_tags(report)
+    if not cat:
+        cat = assign_category_from_title(report)
+        
     if cat:
         report.category = cat
         report.save(update_fields=['category'])

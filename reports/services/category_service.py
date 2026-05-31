@@ -65,6 +65,27 @@ TAG_TO_CATEGORY = {
     'supply chain':     'Supply Chain Attack',
 }
 
+KNOWN_INCIDENTS = {
+    'wormhole':       'Bridge Exploit',
+    'ronin':          'Bridge Exploit',
+    'nomad':          'Bridge Exploit',
+    'harmony':        'Bridge Exploit',
+    'euler':          'Flash Loan',
+    'beanstalk':      'Flash Loan',
+    'pancakebunny':   'Flash Loan',
+    'bybit':          'Key Compromise',
+    'radiant':        'Key Compromise',
+    'curve':          'Reentrancy',
+    'vyper':          'Reentrancy',
+    'eralend':        'Reentrancy',
+    'era lend':       'Reentrancy',
+    'poly network':   'Bridge Exploit',
+    'badger':         'Key Compromise',
+    'bitmart':        'Key Compromise',
+    'bzx':            'Phishing',
+    'mango markets':  'Oracle Manipulation',
+}
+
 # ---------------------------------------------------------------------------
 # Severity thresholds (dollar amounts in USD)
 # ---------------------------------------------------------------------------
@@ -115,6 +136,18 @@ def assign_category_from_tags(report):
             cat, created = Category.objects.get_or_create(name=category_name)
             if created:
                 logger.info("Created new category from tag: %s", category_name)
+            return cat
+    return None
+
+
+def assign_category_from_title(report):
+    from reports.models import Category  # noqa: PLC0415
+    title_lower = report.title.lower()
+    for keyword, category_name in KNOWN_INCIDENTS.items():
+        if keyword in title_lower:
+            cat, created = Category.objects.get_or_create(name=category_name)
+            if created:
+                logger.info("Created new category from title fallback: %s", category_name)
             return cat
     return None
 

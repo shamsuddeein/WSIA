@@ -156,7 +156,7 @@ def normalize_report(report) -> None:
 
     Caller does NOT need to call .save() separately.
     """
-    from reports.services.category_service import assign_category, assign_severity_smart, assign_category_from_tags  # noqa: PLC0415
+    from reports.services.category_service import assign_category, assign_severity_smart, assign_category_from_tags, assign_category_from_title  # noqa: PLC0415
     from analytics.tag_sync import sync_tags  # noqa: PLC0415
 
     report.title = clean_text(report.title)
@@ -173,6 +173,8 @@ def normalize_report(report) -> None:
         report.category = assign_category(combined)
         if report.category is None:
             report.category = assign_category_from_tags(report)
+        if report.category is None:
+            report.category = assign_category_from_title(report)
 
     report.severity = assign_severity_smart(combined)
     report.is_processed = True

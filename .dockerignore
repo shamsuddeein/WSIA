@@ -3,11 +3,13 @@ __pycache__/
 *.pyo
 *.pyd
 .Python
+.env
 env/
 venv/
 .venv/
 *.sqlite3
 *.db
+celerybeat-schedule
 .DS_Store
 .git
 .gitignore

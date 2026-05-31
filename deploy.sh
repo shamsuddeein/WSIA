@@ -10,12 +10,19 @@ echo "🚀 Starting WSIA Production Deployment to $REMOTE_HOST"
 echo "=========================================================="
 
 echo "📦 Transferring files via rsync..."
-rsync -avz --exclude 'venv' --exclude '.git' --exclude '__pycache__' --exclude 'db.sqlite3' ./ $REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR/
+rsync -avz \
+    --exclude 'venv' \
+    --exclude '.git' \
+    --exclude '__pycache__' \
+    --exclude 'db.sqlite3' \
+    --exclude '.env' \
+    --exclude 'celerybeat-schedule' \
+    ./ $REMOTE_USER@$REMOTE_HOST:$REMOTE_DIR/
 
 echo "🔧 Connecting to server to build and launch the stack..."
 ssh $REMOTE_USER@$REMOTE_HOST << 'EOF'
     set -e
-    
+
     cd ~/projects/wsia
 
     echo "⚙️  Configuring environment variables..."
@@ -28,7 +35,7 @@ ssh $REMOTE_USER@$REMOTE_HOST << 'EOF'
     echo "🐳 Building and starting Docker containers..."
     docker compose down || true
     docker compose up --build -d
-    
+
     echo "🛠️  Running database migrations..."
     docker compose exec -T web python manage.py migrate
 

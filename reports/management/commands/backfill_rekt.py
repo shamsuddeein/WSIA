@@ -13,7 +13,7 @@ class Command(BaseCommand):
     help = "Backfill all historical reports from rekt.news (42 pages)."
 
     def handle(self, *args, **kwargs):
-        base_url = "https://rekt.news/?page="
+        base_url = "https://rekt.news"
         new_count = 0
         skipped_count = 0
         error_count = 0
@@ -21,7 +21,7 @@ class Command(BaseCommand):
         # Loop through all 42 pages deterministically
         for page_num in range(1, 43):
             self.stdout.write(f"Scraping page {page_num}...")
-            url = f"{base_url}{page_num}"
+            url = base_url if page_num == 1 else f"{base_url}/page/{page_num}/"
             
             try:
                 resp = requests.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT)

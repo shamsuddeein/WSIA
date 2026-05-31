@@ -44,6 +44,12 @@ class Command(BaseCommand):
             action="store_true",
             help="Print what would happen without writing to the database.",
         )
+        parser.add_argument(
+            "--database",
+            type=str,
+            default="default",
+            help="Database to use.",
+        )
 
     def handle(self, *args, **options):
         from reports.models import HackReport
@@ -53,18 +59,19 @@ class Command(BaseCommand):
         batch_size = options["batch_size"]
         report_id = options["report_id"]
         reprocess = options["reprocess"]
+        db = options["database"]
 
         if dry_run:
             self.stdout.write(self.style.WARNING("DRY RUN — no records will be written.\n"))
 
         # Build queryset
         if report_id:
-            qs = HackReport.objects.filter(pk=report_id)
+            qs = HackReport.objects.using(db).filter(pk=report_id)
             if not qs.exists():
                 self.stderr.write(self.style.ERROR(f"No HackReport with id={report_id}"))
                 return
         else:
-            qs = HackReport.objects.all() if reprocess else HackReport.objects.filter(is_processed=False)
+            qs = HackReport.objects.using(db).all() if reprocess else HackReport.objects.using(db).filter(is_processed=False)
 
         total = qs.count()
         self.stdout.write(f"Records to process: {total}")

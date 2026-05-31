@@ -97,7 +97,7 @@ def clean_text(text: str) -> str:
 # ---------------------------------------------------------------------------
 
 _DOLLAR_AMOUNT_RE = re.compile(
-    r"\$\s*(?P<amount>[\d,]+(?:\.\d+)?)\s*(?P<unit>billion|million|m\b|k\b|thousand)?",
+    r"(?:(?P<prefix>\$|usd[ct]?)\s*)?(?P<amount>[\d,]+(?:\.\d+)?)\s*(?P<unit>billion|million|m\b|k\b|thousand)?\s*(?P<suffix>\$|usd[ct]?)?",
     re.IGNORECASE,
 )
 
@@ -118,12 +118,17 @@ def extract_max_dollar_amount(text: str) -> float:
     Examples:
         "$5 million"   → 5_000_000.0
         "$100M"        → 100_000_000.0
-        "$500k"        → 500_000.0
-        "$3.98 million"→ 3_980_000.0
+        "500k USDC"    → 500_000.0
+        "3.98 million USD"→ 3_980_000.0
     """
     text_lower = text.lower()
     max_amount = 0.0
     for m in _DOLLAR_AMOUNT_RE.finditer(text_lower):
+        prefix = m.group("prefix")
+        suffix = m.group("suffix")
+        if not prefix and not suffix:
+            continue  # Must have a currency indicator
+            
         raw = m.group("amount").replace(",", "")
         unit = (m.group("unit") or "").lower().rstrip(".")
         try:
@@ -151,7 +156,7 @@ def normalize_report(report) -> None:
 
     Caller does NOT need to call .save() separately.
     """
-    from reports.services.category_service import assign_category, assign_severity_smart  # noqa: PLC0415
+    from reports.services.category_service import assign_category, assign_severity_smart, assign_category_from_tags, assign_category_from_title  # noqa: PLC0415
     from analytics.tag_sync import sync_tags  # noqa: PLC0415
 
     report.title = clean_text(report.title)
@@ -159,17 +164,22 @@ def normalize_report(report) -> None:
 
     combined = f"{report.title} {report.description}"
 
+    # Sync tags from raw_data so they are available for category fallback
+    if report.pk:
+        sync_tags(report)
+
     # Only assign if not already set (preserves manual overrides)
     if report.category is None:
         report.category = assign_category(combined)
+        if report.category is None:
+            report.category = assign_category_from_tags(report)
+        if report.category is None:
+            report.category = assign_category_from_title(report)
 
     report.severity = assign_severity_smart(combined)
     report.is_processed = True
 
     report.save(update_fields=["title", "description", "category", "severity", "is_processed"])
-
-    # Sync tags from raw_data after save (needs PK to exist)
-    sync_tags(report)
 
     logger.info(
         "Normalised report id=%s title=%r severity=%s category=%s",

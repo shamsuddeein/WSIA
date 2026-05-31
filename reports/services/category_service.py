@@ -24,6 +24,9 @@ CATEGORY_RULES: list[tuple[str, str]] = [
     ("oracle",             "Oracle Manipulation"),
     ("private key",        "Key Compromise"),
     ("key compromise",     "Key Compromise"),
+    ("signature",          "Signature Verification"),
+    ("authorization",      "Access Control"),
+    ("unauthorized",       "Access Control"),
     ("access control",     "Access Control"),
     ("integer overflow",   "Integer Overflow"),
     ("arithmetic",         "Integer Overflow"),
@@ -42,7 +45,46 @@ CATEGORY_RULES: list[tuple[str, str]] = [
     ("inflation",          "Token Inflation"),
     ("logic error",        "Logic Error"),
     ("misconfiguration",   "Misconfiguration"),
+    ("honeypot",           "Honeypot"),
+    ("sybil",              "Sybil Attack"),
 ]
+
+TAG_TO_CATEGORY = {
+    'private key leak': 'Key Compromise',
+    'bridge':           'Bridge Exploit',
+    'reentrancy':       'Reentrancy',
+    'flash loan':       'Flash Loan',
+    'oracle':           'Oracle Manipulation',
+    'rug':              'Rug Pull',
+    'phishing':         'Phishing',
+    'governance':       'Governance Attack',
+    'access control':   'Access Control',
+    'signature':        'Signature Verification',
+    'sybil':            'Sybil Attack',
+    'mev':              'MEV / Front-Running',
+    'supply chain':     'Supply Chain Attack',
+}
+
+KNOWN_INCIDENTS = {
+    'wormhole':       'Bridge Exploit',
+    'ronin':          'Bridge Exploit',
+    'nomad':          'Bridge Exploit',
+    'harmony':        'Bridge Exploit',
+    'euler':          'Flash Loan',
+    'beanstalk':      'Flash Loan',
+    'pancakebunny':   'Flash Loan',
+    'bybit':          'Key Compromise',
+    'radiant':        'Key Compromise',
+    'curve':          'Reentrancy',
+    'vyper':          'Reentrancy',
+    'eralend':        'Reentrancy',
+    'era lend':       'Reentrancy',
+    'poly network':   'Bridge Exploit',
+    'badger':         'Key Compromise',
+    'bitmart':        'Key Compromise',
+    'bzx':            'Phishing',
+    'mango markets':  'Oracle Manipulation',
+}
 
 # ---------------------------------------------------------------------------
 # Severity thresholds (dollar amounts in USD)
@@ -82,6 +124,30 @@ def assign_category(text: str):
             cat, created = Category.objects.get_or_create(name=category_name)
             if created:
                 logger.info("Created new category: %s", category_name)
+            return cat
+    return None
+
+
+def assign_category_from_tags(report):
+    from reports.models import Category  # noqa: PLC0415
+    tag_names = [t.name.lower() for t in report.tags.all()]
+    for tag_keyword, category_name in TAG_TO_CATEGORY.items():
+        if any(tag_keyword in tag for tag in tag_names):
+            cat, created = Category.objects.get_or_create(name=category_name)
+            if created:
+                logger.info("Created new category from tag: %s", category_name)
+            return cat
+    return None
+
+
+def assign_category_from_title(report):
+    from reports.models import Category  # noqa: PLC0415
+    title_lower = report.title.lower()
+    for keyword, category_name in KNOWN_INCIDENTS.items():
+        if keyword in title_lower:
+            cat, created = Category.objects.get_or_create(name=category_name)
+            if created:
+                logger.info("Created new category from title fallback: %s", category_name)
             return cat
     return None
 

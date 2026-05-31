@@ -74,3 +74,38 @@ def generate_embedding(text):
         logger.error(f"Unexpected error during embedding generation: {e}")
         
     return None
+
+def suggest_tags(text):
+    """
+    Suggest exploit pattern tags based on the report description.
+    Returns a list of suggested string tags.
+    """
+    client = get_client()
+    if not client:
+        return []
+        
+    try:
+        response = client.chat.completions.create(
+            model='gpt-4o',
+            messages=[
+                {'role': 'system', 'content': 'You are a smart contract security expert. Suggest 2 to 5 short tags (e.g., "Flash Loan", "Access Control", "Oracle Manipulation", "Rug Pull") that describe the exploit pattern in the incident. Return ONLY a comma-separated list of tags.'},
+                {'role': 'user', 'content': text[:2000]}
+            ],
+            max_tokens=50,
+            timeout=10,
+        )
+        content = response.choices[0].message.content.strip()
+        tags = [t.strip() for t in content.split(',') if t.strip()]
+        return tags
+    except AuthenticationError:
+        logger.error("OpenAI AuthenticationError: Check your OPENAI_API_KEY.")
+    except RateLimitError:
+        logger.warning("OpenAI RateLimitError: Throttling requests.")
+    except APITimeoutError:
+        logger.warning("OpenAI APITimeoutError: Request timed out.")
+    except OpenAIError as e:
+        logger.error(f"OpenAI Error during tag suggestion: {e}")
+    except Exception as e:
+        logger.error(f"Unexpected error during tag suggestion: {e}")
+        
+    return []

@@ -97,7 +97,7 @@ def clean_text(text: str) -> str:
 # ---------------------------------------------------------------------------
 
 _DOLLAR_AMOUNT_RE = re.compile(
-    r"\$\s*(?P<amount>[\d,]+(?:\.\d+)?)\s*(?P<unit>billion|million|m\b|k\b|thousand)?",
+    r"(?:(?P<prefix>\$|usd[ct]?)\s*)?(?P<amount>[\d,]+(?:\.\d+)?)\s*(?P<unit>billion|million|m\b|k\b|thousand)?\s*(?P<suffix>\$|usd[ct]?)?",
     re.IGNORECASE,
 )
 
@@ -118,12 +118,17 @@ def extract_max_dollar_amount(text: str) -> float:
     Examples:
         "$5 million"   → 5_000_000.0
         "$100M"        → 100_000_000.0
-        "$500k"        → 500_000.0
-        "$3.98 million"→ 3_980_000.0
+        "500k USDC"    → 500_000.0
+        "3.98 million USD"→ 3_980_000.0
     """
     text_lower = text.lower()
     max_amount = 0.0
     for m in _DOLLAR_AMOUNT_RE.finditer(text_lower):
+        prefix = m.group("prefix")
+        suffix = m.group("suffix")
+        if not prefix and not suffix:
+            continue  # Must have a currency indicator
+            
         raw = m.group("amount").replace(",", "")
         unit = (m.group("unit") or "").lower().rstrip(".")
         try:

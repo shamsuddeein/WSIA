@@ -24,6 +24,9 @@ CATEGORY_RULES: list[tuple[str, str]] = [
     ("oracle",             "Oracle Manipulation"),
     ("private key",        "Key Compromise"),
     ("key compromise",     "Key Compromise"),
+    ("signature",          "Signature Verification"),
+    ("authorization",      "Access Control"),
+    ("unauthorized",       "Access Control"),
     ("access control",     "Access Control"),
     ("integer overflow",   "Integer Overflow"),
     ("arithmetic",         "Integer Overflow"),
@@ -42,6 +45,8 @@ CATEGORY_RULES: list[tuple[str, str]] = [
     ("inflation",          "Token Inflation"),
     ("logic error",        "Logic Error"),
     ("misconfiguration",   "Misconfiguration"),
+    ("honeypot",           "Honeypot"),
+    ("sybil",              "Sybil Attack"),
 ]
 
 # ---------------------------------------------------------------------------

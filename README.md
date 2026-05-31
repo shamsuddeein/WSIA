@@ -266,16 +266,16 @@ For production, the docs are hidden unless `ENABLE_PUBLIC_DOCS=true` is set in t
 
 | Phase | Name | Status |
 |---|---|---|
-| 0 | Project Foundation | Django scaffold, Git, PostgreSQL config |
-| 1 | Database Core | Models, migrations, services/ layer, admin |
-| 2 | Basic API | DRF serializers, viewsets, filters, pagination |
-| 3 | First Scraper | rekt.news scraper with rate limiting and dedup |
-| 4 | Data Cleaning | Text normalisation, category and severity assignment |
-| 5 | Pipeline Automation | Celery + Redis periodic task, end-to-end pipeline |
-| 6 | Search & Filtering | `/api/search/` with Q() queries and combined filters |
-| 7 | AI Integration | GPT-4o-mini summaries, embedding-based similarity |
+| 0 | Project Foundation | ✅ Completed — Django scaffold, Git, PostgreSQL config |
+| 1 | Database Core | ✅ Completed — Models, migrations, services/ layer, admin |
+| 2 | Basic API | ✅ Completed — DRF serializers, viewsets, filters, pagination |
+| 3 | First Scraper | ✅ Completed — rekt.news scraper with rate limiting and dedup |
+| 4 | Data Cleaning | ✅ Completed — Text normalisation, category and severity assignment |
+| 5 | Pipeline Automation | ✅ Completed — Celery + Redis periodic task, end-to-end pipeline |
+| 6 | Search & Filtering | ✅ Completed — `/api/search/` with Q() queries and combined filters |
+| 7 | AI Integration | ✅ Completed — GPT-4o-mini summaries, embedding-based similarity |
 
-**Start here:** Complete Phase 0 and Phase 1 first. Stop when you can create a `HackReport` through Django Admin and read it back from the database. Do not touch Celery, Redis, Search, AI, or a second scraper until Phase 1 passes all its checks.
+**Project Status:** All phases (0-7) have been successfully implemented, tested, and deployed! 🚀
 
 ---
 

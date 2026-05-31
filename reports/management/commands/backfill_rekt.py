@@ -13,18 +13,23 @@ class Command(BaseCommand):
     help = "Backfill all historical reports from rekt.news (42 pages)."
 
     def handle(self, *args, **kwargs):
-        base_url = "https://rekt.news"
+        base_url = "https://rekt.news/?page="
         new_count = 0
         skipped_count = 0
         error_count = 0
+        
+        # Cloudflare aggressive cache bypass
+        browser_headers = HEADERS.copy()
+        browser_headers["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        browser_headers["Cache-Control"] = "no-cache"
 
         # Loop through all 42 pages deterministically
         for page_num in range(1, 43):
             self.stdout.write(f"Scraping page {page_num}...")
-            url = base_url if page_num == 1 else f"{base_url}/page/{page_num}/"
+            url = f"{base_url}{page_num}"
             
             try:
-                resp = requests.get(url, headers=HEADERS, timeout=REQUEST_TIMEOUT)
+                resp = requests.get(url, headers=browser_headers, timeout=REQUEST_TIMEOUT)
                 resp.raise_for_status()
             except Exception as exc:
                 self.stderr.write(self.style.ERROR(f"Failed to fetch page {page_num}: {exc}"))

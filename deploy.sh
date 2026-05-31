@@ -34,7 +34,9 @@ ssh $REMOTE_USER@$REMOTE_HOST << 'EOF'
 
     echo "🐳 Building and starting Docker containers..."
     docker compose down || true
-    docker compose up --build -d
+    docker builder prune -a -f || true
+    docker compose build --no-cache
+    docker compose up -d
 
     echo "🛠️  Running database migrations..."
     docker compose exec -T web python manage.py migrate

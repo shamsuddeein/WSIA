@@ -207,6 +207,21 @@ class HackReportViewSet(viewsets.ReadOnlyModelViewSet):
         serializer = HackReportListSerializer(top_5, many=True)
         return Response(serializer.data)
 
+    @action(detail=True, methods=['get'])
+    def suggest_tags(self, request, pk=None):
+        from analytics.ai_service import suggest_tags
+        
+        report = self.get_object()
+        text_to_analyze = report.description or report.title
+        if not text_to_analyze:
+            return Response({"error": "No description available to analyze."}, status=400)
+            
+        tags = suggest_tags(text_to_analyze)
+        if not tags:
+            return Response({"error": "Failed to generate tags. AI may be unconfigured or rate limited."}, status=503)
+            
+        return Response({"suggested_tags": tags})
+
 
 # ---------------------------------------------------------------------------
 # /api/search/
@@ -300,6 +315,14 @@ class ReportSearchView(generics.ListAPIView):
         published_before = params.get("published_before", "").strip()
         if published_before:
             qs = qs.filter(published_at__lte=published_before)
+
+        created_after = params.get("created_after", "").strip()
+        if created_after:
+            qs = qs.filter(created_at__gte=created_after)
+
+        created_before = params.get("created_before", "").strip()
+        if created_before:
+            qs = qs.filter(created_at__lte=created_before)
 
         ordering = params.get("ordering", "-created_at")
         # Annotate severity_order before distinct to avoid SQLite ordering issues
